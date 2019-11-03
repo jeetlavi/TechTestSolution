@@ -1,5 +1,5 @@
 # TechTestSolution
-Tech Test Solution This solution contains YAML based AWS cloud formation template that luanches a Network load balancer which feeds into an Application load baalancer and then into to web servers. The webservers are using Nignx to present output from MySql database as a backend. The DB itself has a read replica based out in two AZs.
+Tech Test Solution This solution contains YAML based AWS cloud formation template that luanches a Network load balancer which feeds into an Application load baalancer and then into to web servers. The webservers are using Apache to present output from MySql database as a backend. The DB itself has a read replica based out in two AZs.
 
 Requirements: Windows command prompt with AWS CLI profile setup. Use 'AWS configure' cmdlet to setup a new default profile.
 
