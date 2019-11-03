@@ -1,0 +1,245 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  InstanceTypeParameters:
+    Description: Only deploy t2.micro instances.
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - m1.small
+  
+  ImageIdParameters:
+    Description: Only use ubuntu AMIs. Default is for us-west-1
+    Type: String
+    Default: ami-0dd655843c87b6930
+
+  AZ1IdParameters:
+    Description: provide AZ1 of your choice. Default value is us-west-1a
+    Type: String
+    Default: us-west-1a
+
+  AZ2IdParameters:
+    Description: provide AZ2 of your choice. Default value is us-west-1b
+    Type: String
+    Default: us-west-1c
+  
+  KeynameParameters:
+    Description: enter key name in your region. If running by default, provide a key in us-west-1
+    Type: String
+
+  SelfsignedCertificateARN:
+    Description: enter ARN for the self signed certificate
+    Type: String
+
+Resources:
+
+  MyInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      AvailabilityZone: !Ref AZ1IdParameters
+      ImageId: !Ref ImageIdParameters
+      KeyName: !Ref KeynameParameters
+      SecurityGroupIds: 
+        - !ImportValue StackVPC-MyPrivateSecurityGroup
+      SubnetId: !ImportValue StackVPC-PrivateSubnet 
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -x
+          sleep 2m
+          apt-get update -y
+          apt-get install -y mysql-server php php-mysql
+          mysql -u techtest -p012345678 -h ${MyDatabase.Endpoint.Address} <<MYSQL_SCRIPT
+          use test;
+          use test;
+          CREATE TABLE users (
+          id INT(11) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+          firstname VARCHAR(30) NOT NULL,
+          lastname VARCHAR(30) NOT NULL,
+          email VARCHAR(50) NOT NULL,
+          age INT(3),
+          location VARCHAR(50),
+          date TIMESTAMP
+          );
+          MYSQL_SCRIPT
+
+          apt-get install -y apache2 
+          apt-get install -y unzip
+          systemctl start apache2
+          systemctl enable apache2
+          cd /var/www
+          rm -rf html
+          wget https://s3.amazonaws.com/techtest/html.zip
+          unzip html.zip
+          sed -i -e 's/localhost/${MyDatabase.Endpoint.Address}/g' /var/www/html/config.php
+      Tags:
+      - Key: "Name"
+        Value: "TechtestWebInstance"
+
+  MyInstance2:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      AvailabilityZone: !Ref AZ2IdParameters
+      ImageId: !Ref ImageIdParameters
+      KeyName: !Ref KeynameParameters
+      SecurityGroupIds: 
+        - !ImportValue StackVPC-MyPrivateSecurityGroup
+      SubnetId: !ImportValue StackVPC-PrivateSubnet 
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -x
+          sleep 2m
+          apt-get update -y
+          apt-get install -y mysql-server php php-mysql
+          apt-get install -y apache2 
+          apt-get install -y unzip
+          systemctl start apache2
+          systemctl enable apache2
+          cd /var/www
+          rm -rf html
+          wget https://s3.amazonaws.com/techtest/html.zip
+          unzip html.zip
+          sed -i -e 's/localhost/${MyDatabaseRR.Endpoint.Address}/g' /var/www/html/config.php
+      Tags:
+      - Key: "Name"
+        Value: "TechTestWebRR"
+
+  MyDatabase:
+    Type: AWS::RDS::DBInstance
+    Properties: 
+      AllocatedStorage: 20
+      BackupRetentionPeriod: "35"
+      DBInstanceClass: "db.t2.micro"
+      DBInstanceIdentifier: "MyDBSource"
+      DBName: "test"
+      DBSecurityGroups: 
+        - !ImportValue StackVPC-MyDBSecurityGroup
+      DBSubnetGroupName: !ImportValue StackVPC-MyPrivateSubnetGroup
+      Engine: "MySQL"
+      MasterUserPassword: "012345678"
+      MasterUsername: "techtest"
+      MultiAZ: "true"
+      Port: 3306
+      PubliclyAccessible: "true"
+      Tags: 
+        - Key: "Name"
+          Value: "TechTestDatabase"
+
+  MyDatabaseRR:
+    Type: AWS::RDS::DBInstance
+    Properties: 
+      AllocatedStorage: 20
+      BackupRetentionPeriod: "35"
+      DBInstanceClass: "db.t2.micro"
+      DBInstanceIdentifier: "Replica-DB"
+      DBSecurityGroups: 
+       - !ImportValue StackVPC-MyDBSecurityGroup
+      DBSubnetGroupName: !ImportValue StackVPC-MyPrivateSubnetGroup
+      Engine: "MySQL"
+      MasterUserPassword: "012345678"
+      MasterUsername: "techtest"
+      Port: 3306
+      PubliclyAccessible: "false"
+      SourceDBInstanceIdentifier: !Ref MyDatabase
+      Tags: 
+        - Key: "Name"
+          Value: "TechTestDatabase"
+
+  TechTestApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: TechtestALB
+      Scheme: internal
+      Subnets: [!ImportValue StackVPC-MyPublicSubnet2 , !ImportValue StackVPC-MyPublicSubnet1]
+      Type: application
+      Tags:
+        - Key: Name
+          Value: TechTestALB
+  TechTestALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: TechTest-ALB-target
+      Port: 443
+      Protocol: TCP
+      VpcId: !ImportValue StackVPC-TechTestVPC
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 60
+      Targets:
+      - Id: !Ref MyInstance
+        Port: 443
+      - Id: !Ref MyInstance2
+        Port: 443  
+      Tags:
+        - Key: Name
+          Value: TechTest-ALB-target
+  TechtestALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref TechTestALBTargetGroup
+      LoadBalancerArn: !Ref TechTestApplicationLoadBalancer
+      Port: '443'
+      Protocol: TCP
+  TechTestALBListenerCert:
+    Type: AWS::ElasticLoadBalancingV2::ListenerCertificate
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref SelfsignedCertificateARN
+      ListenerArn: !Ref TechtestALBListener
+
+  TechTestNetworkLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: TechtestNB
+      Scheme: internet-facing
+      Subnets: [!ImportValue StackVPC-MyPublicSubnet2 , !ImportValue StackVPC-MyPublicSubnet1]
+      Type: network
+      Tags:
+        - Key: Name
+          Value: TechTestNB
+  TechTestNLBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: TechTest-NLB-target
+      Port: 443
+      Protocol: TCP
+      VpcId: !ImportValue StackVPC-TechTestVPC
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 60
+      Targets:
+      - Id: !Ref MyInstance
+        Port: 443
+      - Id: !Ref MyInstance2
+        Port: 443  
+      Tags:
+        - Key: Name
+          Value: TechTest-NLB-target
+  TechtestNLBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref TechTestNLBTargetGroup
+      LoadBalancerArn: !Ref TechTestNetworkLoadBalancer
+      Port: '443'
+      Protocol: TCP
+  TechTestNLBListenerCert:
+    Type: AWS::ElasticLoadBalancingV2::ListenerCertificate
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref SelfsignedCertificateARN
+      ListenerArn: !Ref TechtestNLBListener
+
+Outputs:
+
+  MyEndpoint:
+    Description: Endpoint referred.
+    Value: !GetAtt MyDatabase.Endpoint.Address
+    Export:
+      Name: !Sub 'StackInstance-Endpoint'

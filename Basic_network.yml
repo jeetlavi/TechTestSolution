@@ -1,0 +1,263 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  Owner:
+    Description: EnterIndividual Name Responsible.
+    Type: String
+    Default: Himan
+  
+  Project:
+    Description: Tech Test.
+    Type: String
+    Default: Tech test
+
+  AZ1IdParameters:
+    Description: Default value is us-west-1a
+    Type: String
+    Default: us-west-1a
+
+  AZ2IdParameters:
+    Description: Default value is us-west-1b
+    Type: String
+    Default: us-west-1c
+    
+Resources:
+
+  TechTestVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16 
+      Tags:
+      - Key: "Name"
+        Value: "TechTest-10.0.0.0/16"
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      AvailabilityZone: !Ref AZ1IdParameters
+      CidrBlock: 10.0.0.1/24
+      VpcId: !Ref TechTestVPC
+      MapPublicIpOnLaunch: 'true'
+      Tags:
+      - Key: "Name"
+        Value: "TechTestPublic-us-west-1a"
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      AvailabilityZone: !Ref AZ2IdParameters
+      CidrBlock: 10.0.1.1/24
+      VpcId: !Ref TechTestVPC
+      MapPublicIpOnLaunch: 'true'
+      Tags:
+      - Key: "Name"
+        Value: "TechTestPublic2-us-west-1b"
+
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      AvailabilityZone: !Ref AZ1IdParameters
+      CidrBlock: 10.0.2.1/24
+      VpcId: !Ref TechTestVPC
+      Tags:
+      - Key: "Name"
+        Value: "TechTestPrivate1-us-west-1b"
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      AvailabilityZone: !Ref AZ2IdParameters
+      CidrBlock: 10.0.3.1/24
+      VpcId: !Ref TechTestVPC
+      Tags:
+      - Key: "Name"
+        Value: "TechTestPrivate2-us-west-1b"
+
+  PrivateSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties: 
+      DBSubnetGroupDescription: "Database Subnet Group"
+      DBSubnetGroupName: "DatabaseSubnetGroup"
+      SubnetIds: 
+        - !Ref PrivateSubnet
+        - !Ref PrivateSubnet2
+          
+  MyInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: "Name"
+        Value: "TechTestIGW"
+
+  TechTestVPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment 
+    Properties:
+      InternetGatewayId: !Ref MyInternetGateway
+      VpcId: !Ref TechTestVPC
+
+  MyEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: TechTestVPCGatewayAttachment
+    Properties:  
+      Domain : vpc
+
+  MyNatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties: 
+      AllocationId: !GetAtt MyEIP.AllocationId
+      SubnetId: !Ref PublicSubnet
+      Tags:
+      - Key: "Name"
+        Value: "TechTestNAT"
+      
+  MyInternetRouteOutTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref TechTestVPC
+      Tags:
+      - Key: "Name"
+        Value: "TechTestPublicRoute"
+
+  MyPrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref TechTestVPC
+      Tags:
+      - Key: "Name"
+        Value: "TechTestPrivateRoute"     
+
+  MyInternetRouteout:
+    Type: AWS::EC2::Route
+    Properties: 
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref MyInternetGateway
+      RouteTableId: !Ref MyInternetRouteOutTable
+
+  MyPrivateRoute:
+    Type: AWS::EC2::Route
+    Properties: 
+      DestinationCidrBlock: 0.0.0.0/0
+      RouteTableId: !Ref MyPrivateRouteTable
+      NatGatewayId: !Ref MyNatGateway   
+      
+  MySubnetRouteTableAssociation:  
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref MyInternetRouteOutTable
+      SubnetId: !Ref PublicSubnet
+
+  MyPrivateSubnetRouteTableAssociation:  
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref MyPrivateRouteTable
+      SubnetId: !Ref PrivateSubnet
+
+  MyPublicSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: Security Group for Public Instance.
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 0.0.0.0/0 
+      VpcId : !Ref TechTestVPC
+          
+  MyDBSecurityGroup:
+    Type: AWS::RDS::DBSecurityGroup
+    Properties: 
+      EC2VpcId: !Ref TechTestVPC
+      DBSecurityGroupIngress: 
+        CIDRIP: 10.0.0.1/24
+      GroupDescription: DBSecurityGroup
+      Tags: 
+        - Key: "Name"
+          Value: "DB Security Group"
+
+  MyPrivateSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group for Private Instance.
+      VpcId: !Ref TechTestVPC
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.0.1.0/24
+
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 10.0.1.0/24
+
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.0.1.0/24
+
+      Tags:
+        - Key: "Name"
+          Value: "MyPrivateSecurityGroup"
+
+Outputs:
+
+  TechTestVPC:
+    Description: VPC referred.
+    Value: !Ref TechTestVPC
+    Export:
+      Name: !Sub 'StackVPC-TechTestVPC'
+
+  PrivateSubnet: 
+    Description: Private Subnet Referred. 
+    Value: !Ref PrivateSubnet
+    Export:
+      Name: !Sub 'StackVPC-PrivateSubnet'
+
+  MyDBGroup:
+    Description: My Private Security Group Referred.
+    Value: !Ref MyDBSecurityGroup
+    Export:
+      Name: !Sub 'StackVPC-MyDBSecurityGroup'
+
+  MyPublicSecurityGroup:
+    Description: My Public Security Group Referred.
+    Value: !Ref MyPublicSecurityGroup
+    Export:
+      Name: !Sub 'StackVPC-MyPublicSecurityGroup'
+
+  MyPrivateSecurityGroup:
+    Description: My Private Security Group Referred.
+    Value: !Ref MyPrivateSecurityGroup
+    Export:
+      Name: !Sub 'StackVPC-MyPrivateSecurityGroup'
+
+  TechTestVPCGatewayAttachment:
+    Description: VPC Gateway Attachment Referred.
+    Value: !Ref TechTestVPCGatewayAttachment
+    Export:
+      Name: !Sub 'StackVPC-TechTestVPCGatewayAttachment'
+  
+  MySubnetGroup:
+    Description: Subnet Group Referred.
+    Value: !Ref PrivateSubnetGroup
+    Export:
+      Name: !Sub 'StackVPC-MyPrivateSubnetGroup'
+
+  MyPublicSubnet1:
+    Description: Public Subnet Referred.
+    Value: !Ref PublicSubnet
+    Export:
+      Name: !Sub 'StackVPC-MyPublicSubnet1'
+
+  MyPublicSubnet2:
+    Description: Public Subnet Referred.
+    Value: !Ref PublicSubnet2
+    Export:
+      Name: !Sub 'StackVPC-MyPublicSubnet2'
