@@ -8,3 +8,7 @@ Here are the pre-requisites/assumption made in the case:
     The account from which CF template is being executed has access to luanch VPC,Subnets, EC2 instances and so on.
     For the sake of this example long list ogf mapping has not been done with AMI in all different regions. The template works (on basis od AMI) on us-west-1 region by default. Please enter an "Ubuntu" AMI of your region if required.
     UBUNTU has been selected as OS for this solution.
+
+Steps:
+1) Execute template - basic-network.yml.
+2) Secondly, execute template - infrastructure.yml.
