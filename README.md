@@ -1,4 +1,4 @@
-# TechTestSolution
+# TechTestSolution -- For Task1 - Cloudformation
 Tech Test Solution This solution contains YAML based AWS cloud formation template that luanches a Network load balancer which feeds into an Application load baalancer and then into to web servers. The webservers are using Apache to present output from MySql database as a backend. The DB itself has a read replica based out in two AZs.
 
 Requirements: Windows command prompt with AWS CLI profile setup. Use 'AWS configure' cmdlet to setup a new default profile.
@@ -12,3 +12,8 @@ Here are the pre-requisites/assumption made in the case:
 Steps:
 1) Execute template - basic-network.yml.
 2) Secondly, execute template - infrastructure.yml.
+
+# TechTestSolution -- For Task2 - Python
+Please check - trigger_jenkins_job.py file for solution. The code imports in-built libraries. The send_mail() is fairly raw and can be optimized to use much advanced libraries such as 'MIMEMultipart', if required.
+
+Thanks.
